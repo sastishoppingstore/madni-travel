@@ -1,0 +1,770 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===== USERS & AUTH =====
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String?
+  name      String?
+  phone     String?
+  avatar    String?
+  role      String   @default("CUSTOMER")
+  status    String   @default("ACTIVE")
+  emailVerified DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  bookings      Booking[]
+  customerDues  CustomerDue[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  sessions      Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@map("sessions")
+}
+
+// ===== STAFF / WORKERS =====
+model Staff {
+  id          String    @id @default(cuid())
+  name        String
+  email       String    @unique
+  phone       String?
+  role        String    @default("AGENT")
+  department  String?
+  salary      Float     @default(0)
+  commissionRate Float  @default(0)
+  joinDate    DateTime  @default(now())
+  status      String    @default("ACTIVE")
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  sales       POSSale[]
+  salaries    Salary[]
+  commissions Commission[]
+
+  @@map("staff")
+}
+
+model Salary {
+  id          String   @id @default(cuid())
+  staffId     String
+  staff       Staff    @relation(fields: [staffId], references: [id])
+  month       Int
+  year        Int
+  basicSalary Float
+  allowances  Float    @default(0)
+  deductions  Float    @default(0)
+  bonus       Float    @default(0)
+  netSalary   Float
+  paidAmount  Float    @default(0)
+  dueAmount   Float    @default(0)
+  status      String @default("PENDING")
+  paidDate    DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([staffId, month, year])
+  @@map("salaries")
+}
+
+model Commission {
+  id          String   @id @default(cuid())
+  staffId     String
+  staff       Staff    @relation(fields: [staffId], references: [id])
+  saleId      String?
+  amount      Float
+  description String?
+  status      String @default("PENDING")
+  createdAt   DateTime @default(now())
+  paidDate    DateTime?
+
+  @@map("commissions")
+}
+
+// ===== BOOKINGS (Unified) =====
+model Booking {
+  id            String        @id @default(cuid())
+  bookingNo     String        @unique @default(cuid())
+  userId        String?
+  user          User?         @relation(fields: [userId], references: [id])
+  customerName  String
+  customerEmail String
+  customerPhone String
+  type          String
+  status        String @default("PENDING_PAYMENT")
+  paymentStatus String @default("PENDING")
+  totalAmount   Float
+  paidAmount    Float         @default(0)
+  dueAmount     Float         @default(0)
+  currency      String        @default("PKR")
+  adultCount    Int           @default(1)
+  childCount    Int           @default(0)
+  infantCount   Int           @default(0)
+  travelDate    DateTime?
+  returnDate    DateTime?
+  notes         String?
+  internalNotes String?
+  pnr           String?
+  eTicketNo     String?
+  ticketUrl     String?
+  supplierId    String?
+  supplier      Supplier?     @relation(fields: [supplierId], references: [id])
+  staffId       String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  flightDetails FlightBookingDetail?
+  hotelDetails  HotelBookingDetail?
+  packageDetails PackageBookingDetail?
+  visaDetails   VisaBookingDetail?
+  busDetails    BusBookingDetail?
+  umrahDetails  UmrahBookingDetail?
+  payments      Payment[]
+  notifications Notification[]
+
+  @@map("bookings")
+}
+
+model FlightBookingDetail {
+  id          String  @id @default(cuid())
+  bookingId   String  @unique
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  // Flight info
+  airline     String?
+  flightNo    String?
+  fromAirport String
+  toAirport   String
+  fromCity    String
+  toCity      String
+  departureDate   DateTime
+  arrivalDate     DateTime?
+  classType       String    @default("ECONOMY")
+  tripType        String    @default("ONE_WAY")
+  
+  // Pricing
+  baseFare    Float   @default(0)
+  taxes       Float   @default(0)
+  serviceFee  Float   @default(0)
+  markup      Float   @default(0)
+  discount    Float   @default(0)
+  
+  // Passengers JSON
+  passengers  String? // JSON array
+  
+  @@map("flight_booking_details")
+}
+
+model HotelBookingDetail {
+  id          String  @id @default(cuid())
+  bookingId   String  @unique
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  hotelName   String
+  city        String
+  checkIn     DateTime
+  checkOut    DateTime
+  roomType    String
+  roomCount   Int     @default(1)
+  nightCount  Int     @default(1)
+  boardBasis  String  @default("BB")
+  
+  @@map("hotel_booking_details")
+}
+
+model PackageBookingDetail {
+  id          String  @id @default(cuid())
+  bookingId   String  @unique
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  packageId   String?
+  package     HolidayPackage? @relation(fields: [packageId], references: [id])
+  packageName String
+  destination String
+  duration    Int     @default(3)
+  
+  @@map("package_booking_details")
+}
+
+model VisaBookingDetail {
+  id              String  @id @default(cuid())
+  bookingId       String  @unique
+  booking         Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  visaTypeId      String?
+  visaType        VisaService? @relation(fields: [visaTypeId], references: [id])
+  country         String
+  visaTypeName    String
+  processingTime  String  @default("7-10 days")
+  passportNo      String?
+  
+  @@map("visa_booking_details")
+}
+
+model BusBookingDetail {
+  id          String  @id @default(cuid())
+  bookingId   String  @unique
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  fromCity    String
+  toCity      String
+  busOperator String?
+  busType     String  @default("LUXURY")
+  seatNumbers String? // JSON array
+  
+  @@map("bus_booking_details")
+}
+
+model UmrahBookingDetail {
+  id              String  @id @default(cuid())
+  bookingId       String  @unique
+  booking         Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  packageId       String?
+  package         UmrahPackage? @relation(fields: [packageId], references: [id])
+  packageName     String
+  makkahHotel     String?
+  madinahHotel    String?
+  duration        Int     @default(15)
+  
+  @@map("umrah_booking_details")
+}
+
+// ===== PACKAGES =====
+model HolidayPackage {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String?
+  destination String
+  duration    Int      @default(3)
+  price       Float    @default(0)
+  salePrice   Float    @default(0)
+  currency    String   @default("PKR")
+  coverImage  String?
+  gallery     String?  // JSON array
+  highlights  String?  // JSON array
+  itinerary   String?  // JSON array
+  inclusions  String?  // JSON array
+  exclusions  String?  // JSON array
+  terms       String?
+  isFeatured  Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  seoTitle    String?
+  seoDesc     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookings    PackageBookingDetail[]
+
+  @@map("holiday_packages")
+}
+
+model UmrahPackage {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  description     String?
+  duration        Int      @default(15)
+  price           Float    @default(0)
+  salePrice       Float    @default(0)
+  currency        String   @default("PKR")
+  coverImage      String?
+  makkahHotel     String?
+  makkahNights    Int      @default(7)
+  madinahHotel    String?
+  madinahNights   Int      @default(7)
+  includesFlights Boolean  @default(true)
+  includesVisa    Boolean  @default(true)
+  includesTransport Boolean @default(true)
+  includesFood    Boolean  @default(true)
+  includesGuide   Boolean  @default(true)
+  isFeatured      Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  seoTitle        String?
+  seoDesc         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bookings UmrahBookingDetail[]
+
+  @@map("umrah_packages")
+}
+
+model VisaService {
+  id          String   @id @default(cuid())
+  country     String
+  countryCode String?
+  type        String   // Tourist, Business, Student, etc.
+  title       String
+  description String?
+  requirements String? // JSON array
+  processingTime String @default("7-10 working days")
+  validity    String?
+  price       Float    @default(0)
+  currency    String   @default("PKR")
+  coverImage  String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookings VisaBookingDetail[]
+
+  @@map("visa_services")
+}
+
+// ===== PAYMENTS =====
+model Payment {
+  id          String          @id @default(cuid())
+  bookingId   String
+  booking     Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  amount      Float
+  method      String
+  status      String   @default("PENDING")
+  transactionId String?
+  gatewayResponse String?
+  paidAt      DateTime?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@map("payments")
+}
+
+// ===== POS / SALES =====
+model POSSale {
+  id          String   @id @default(cuid())
+  invoiceNo   String   @unique
+  staffId     String?
+  staff       Staff?   @relation(fields: [staffId], references: [id])
+  customerName String
+  customerPhone String?
+  serviceType String
+  serviceDescription String?
+  purchasePrice Float  @default(0)
+  salePrice   Float    @default(0)
+  tax         Float    @default(0)
+  serviceCharge Float  @default(0)
+  discount    Float    @default(0)
+  totalAmount Float    @default(0)
+  paidAmount  Float    @default(0)
+  dueAmount   Float    @default(0)
+  profit      Float    @default(0)
+  paymentMethod String @default("CASH_AT_OFFICE")
+  status      String @default("COMPLETED")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("pos_sales")
+}
+
+// ===== SUPPLIERS =====
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // Airline, Hotel, Visa, etc.
+  contactPerson String?
+  email       String?
+  phone       String?
+  address     String?
+  balance     Float    @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookings    Booking[]
+  payments    SupplierPayment[]
+
+  @@map("suppliers")
+}
+
+model SupplierPayment {
+  id          String   @id @default(cuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  amount      Float
+  type        String   // PAYMENT or REFUND
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@map("supplier_payments")
+}
+
+// ===== CUSTOMER DUES =====
+model CustomerDue {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  customerName String
+  customerPhone String?
+  amount      Float
+  paid        Float    @default(0)
+  due         Float
+  status      String @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("customer_dues")
+}
+
+// ===== EXPENSES =====
+model Expense {
+  id          String   @id @default(cuid())
+  category    String
+  description String
+  amount      Float
+  date        DateTime @default(now())
+  paymentMethod String @default("CASH")
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@map("expenses")
+}
+
+// ===== NOTIFICATIONS =====
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  bookingId String?
+  booking   Booking? @relation(fields: [bookingId], references: [id])
+  type      String
+  channel   String @default("EMAIL")
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+// ===== SYSTEM SETTINGS =====
+model CompanySetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String?
+  category  String   @default("GENERAL")
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("company_settings")
+}
+
+model SMTPSetting {
+  id       String @id @default(cuid())
+  host     String
+  port     Int    @default(587)
+  username String
+  password String
+  encryption String @default("tls")
+  fromEmail String
+  fromName  String
+  replyTo   String?
+  isActive  Boolean @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@map("smtp_settings")
+}
+
+model WhatsAppSetting {
+  id            String @id @default(cuid())
+  provider      String @default("meta")
+  apiBaseUrl    String @default("https://graph.facebook.com/v18.0")
+  accessToken   String?
+  phoneNumberId String?
+  businessAccountId String?
+  templateName  String @default("madni_travel_")
+  languageCode  String @default("en")
+  fallbackLink  String?
+  isActive      Boolean @default(false)
+  updatedAt     DateTime @updatedAt
+
+  @@map("whatsapp_settings")
+}
+
+model GeminiSetting {
+  id            String @id @default(cuid())
+  apiKey        String?
+  modelName     String @default("gemini-pro")
+  temperature   Float  @default(0.7)
+  systemPrompt  String?
+  greeting      String @default("Assalamualaikum! I'm your Madni Travel AI assistant. How can I help you today?")
+  maxTokens     Int    @default(2048)
+  isActive      Boolean @default(false)
+  updatedAt     DateTime @updatedAt
+
+  @@map("gemini_settings")
+}
+
+model PaymentGatewaySetting {
+  id          String @id @default(cuid())
+  name        String // JazzCash, EasyPaisa, PayFast, etc.
+  displayName String
+  gatewayType String
+  isActive    Boolean @default(false)
+  sandbox     Boolean @default(true)
+  merchantId  String?
+  storeId     String?
+  username    String?
+  password    String?
+  publicKey   String?
+  privateKey  String?
+  secretKey   String?
+  webhookSecret String?
+  callbackUrl   String?
+  successUrl    String?
+  failedUrl     String?
+  currency      String @default("PKR")
+  extraFee      Float  @default(0)
+  instructions  String?
+  logo          String?
+  sortOrder     Int    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("payment_gateway_settings")
+}
+
+model FlightAPISetting {
+  id          String @id @default(cuid())
+  providerName String
+  providerType String // Amadeus, GDS, NDC, Generic
+  baseUrl     String?
+  apiKey      String?
+  apiSecret   String?
+  clientId    String?
+  clientSecret String?
+  sandbox     Boolean @default(true)
+  isActive    Boolean @default(false)
+  currency    String @default("PKR")
+  markupPercent Float @default(0)
+  fixedServiceFee Float @default(0)
+  timeout     Int    @default(30)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("flight_api_settings")
+}
+
+// ===== SEO =====
+model SEOPage {
+  id              String   @id @default(cuid())
+  pagePath        String   @unique
+  pageName        String
+  seoTitle        String?
+  metaDescription String?
+  focusKeyword    String?
+  canonicalUrl    String?
+  ogTitle         String?
+  ogDescription   String?
+  ogImage         String?
+  twitterTitle    String?
+  twitterDescription String?
+  twitterImage    String?
+  robotsIndex     Boolean  @default(true)
+  sitemapInclude  Boolean  @default(true)
+  schemaType      String?  // TravelAgency, Product, Article, etc.
+  breadcrumbs     String?  // JSON
+  faqSchema       String?  // JSON
+  customSchema    String?
+  seoScore        Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("seo_pages")
+}
+
+model Redirect {
+  id          String   @id @default(cuid())
+  fromPath    String   @unique
+  toPath      String
+  type        String   @default("301")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("redirects")
+}
+
+// ===== HOMEPAGE SECTIONS =====
+model HomepageSection {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  title       String
+  subtitle    String?
+  description String?
+  coverImage  String?
+  buttonText  String?
+  buttonLink  String?
+  bgColor     String?
+  textColor   String?
+  sortOrder   Int      @default(0)
+  isVisible   Boolean  @default(true)
+  is3D        Boolean  @default(false)
+  metaData    String?  // JSON for extra config
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("homepage_sections")
+}
+
+// ===== BLOG =====
+model BlogPost {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  excerpt     String?
+  content     String
+  coverImage  String?
+  author      String   @default("Madni Travel")
+  category    String   @default("Travel Guide")
+  tags        String?  // JSON array
+  isPublished Boolean  @default(true)
+  publishedAt DateTime?
+  seoTitle    String?
+  seoDesc     String?
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("blog_posts")
+}
+
+// ===== MEDIA =====
+model MediaFile {
+  id        String   @id @default(cuid())
+  filename  String
+  originalName String
+  mimeType  String
+  size      Int
+  url       String
+  folder    String   @default("general")
+  alt       String?
+  createdAt DateTime @default(now())
+
+  @@map("media_files")
+}
+
+// ===== AUDIT LOGS =====
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  oldData   String?
+  newData   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// ===== COUPONS =====
+model Coupon {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  description String?
+  discountType String  @default("PERCENTAGE") // PERCENTAGE, FIXED
+  discountValue Float @default(0)
+  minAmount   Float    @default(0)
+  maxDiscount Float?
+  usageLimit  Int?
+  usageCount  Int      @default(0)
+  validFrom   DateTime @default(now())
+  validUntil  DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("coupons")
+}
+
+// ===== EMAIL TEMPLATES =====
+model EmailTemplate {
+  id      String @id @default(cuid())
+  name    String @unique
+  subject String
+  body    String
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("email_templates")
+}
+
+// ===== CASH LEDGER =====
+model CashLedger {
+  id          String   @id @default(cuid())
+  date        DateTime @default(now())
+  type        String   // INCOME, EXPENSE
+  category    String
+  description String
+  amount      Float
+  balance     Float
+  reference   String?
+  createdAt   DateTime @default(now())
+
+  @@map("cash_ledger")
+}
+
+// ===== REFUNDS =====
+model Refund {
+  id          String   @id @default(cuid())
+  bookingId   String?
+  saleId      String?
+  amount      Float
+  reason      String?
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED, PROCESSED
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("refunds")
+}
+
+// ===== DESTINATIONS =====
+model Destination {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  country     String?
+  description String?
+  coverImage  String?
+  isPopular   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@map("destinations")
+}
